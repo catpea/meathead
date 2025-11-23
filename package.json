@@ -7,7 +7,21 @@
     "server": "http-server -c-1 -o .",
     "save": "git add .; git commit -m 'Updated Release'; npm version patch; npm publish; git push --follow-tags;"
   },
-  "keywords": [],
+  "keywords": [
+    "mind-map",
+    "zui",
+    "zoomable-ui",
+    "mindmap",
+    "visualization",
+    "interactive",
+    "canvas",
+    "svg",
+    "knowledge-graph",
+    "brainstorming"
+  ],
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  },
   "author": "catpea (https://github.com/catpea)",
   "license": "MIT",
   "type": "module",
