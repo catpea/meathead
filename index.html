@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>meathead</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+      user-select: none;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    /* Light mode (default) */
+    body {
+      --bg: #a2a899;
+      --fg: #14181d;
+      --node-bg: #b8bfaf;
+      --node-hover: #c8cfbf;
+      --node-selected: #8898a9;
+      --node-root: #788799;
+      --hud-bg: #14181d;
+      --hud-fg: #a2a899;
+      --grid-line: rgba(20, 24, 29, 0.03);
+    }
+
+    /* Dark mode */
+    body.dark {
+      --bg: #14181d;
+      --fg: #a2a899;
+      --node-bg: #1e2229;
+      --node-hover: #282e39;
+      --node-selected: #3a4455;
+      --node-root: #4a5465;
+      --hud-bg: #a2a899;
+      --hud-fg: #14181d;
+      --grid-line: rgba(162, 168, 153, 0.05);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--fg);
+    }
+
+    #container {
+      position: fixed;
+      inset: 0;
+      cursor: grab;
+      background:
+        linear-gradient(90deg, transparent 49px, var(--grid-line) 49px, var(--grid-line) 50px, transparent 50px),
+        linear-gradient(0deg, transparent 49px, var(--grid-line) 49px, var(--grid-line) 50px, transparent 50px);
+      background-size: 50px 50px;
+    }
+
+    #container.grabbing {
+      cursor: grabbing;
+    }
+
+    #svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .connection {
+      stroke: var(--fg);
+      stroke-width: 2;
+      fill: none;
+      transition: stroke-width 0.1s;
+      pointer-events: stroke;
+      stroke-linecap: round;
+      cursor: pointer;
+    }
+
+    .connection:hover {
+      stroke-width: 5;
+    }
+
+    .connection.selected {
+      stroke-width: 8 !important;
+      stroke-dasharray: 15 8 !important;
+      animation: march 0.8s linear infinite !important;
+      stroke: var(--fg) !important;
+      opacity: 1 !important;
+    }
+
+    .connection.temp-connection {
+      stroke-width: 3;
+      stroke-dasharray: 5 5;
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    @keyframes march {
+      from {
+        stroke-dashoffset: 0;
+      }
+      to {
+        stroke-dashoffset: -23;
+      }
+    }
+
+    #viewport {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      transition: transform 0.1s ease-out;
+    }
+
+    .node {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      cursor: move;
+      padding: 8px 14px;
+      background: var(--node-bg);
+      border: 2px solid var(--fg);
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      box-shadow: 2px 2px 0 rgba(0,0,0,0.2);
+      transition: background 0.1s;
+      max-width: 250px;
+      min-width: 80px;
+    }
+
+    .node:hover {
+      background: var(--node-hover);
+    }
+
+    .node.selected {
+      background: var(--node-selected);
+      border: 3px solid var(--fg);
+      padding: 7px 13px;
+    }
+
+    .node.root {
+      padding: 10px 18px;
+      font-size: 13px;
+      border: 3px solid var(--fg);
+      background: var(--node-root);
+      box-shadow: 3px 3px 0 rgba(0,0,0,0.3);
+    }
+
+    .node-id {
+      font-size: 8px;
+      opacity: 0.6;
+      margin-top: 4px;
+    }
+
+    .node-label-edit {
+      outline: none;
+      cursor: text;
+      min-width: 40px;
+      font-weight: bold;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .node-label-edit:focus {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2px 4px;
+      margin: -2px -4px;
+      border-radius: 2px;
+    }
+
+    .node-text-edit {
+      outline: none;
+      cursor: text;
+      font-size: 8px;
+      font-weight: normal;
+      margin-top: 4px;
+      opacity: 0.8;
+      white-space: normal;
+      word-wrap: break-word;
+      max-width: 220px;
+    }
+
+    .node-text-edit.empty {
+      opacity: 0.3;
+    }
+
+    .node-text-edit.empty:before {
+      content: 'add notes...';
+      opacity: 0.5;
+    }
+
+    .node-text-edit:focus {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2px 4px;
+      margin: 2px -4px;
+      border-radius: 2px;
+      opacity: 1;
+    }
+
+    .node-url-container {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .node-url-edit {
+      outline: none;
+      cursor: text;
+      font-size: 7px;
+      font-weight: normal;
+      opacity: 0.7;
+      font-family: 'Courier New', monospace;
+      white-space: normal;
+      word-wrap: break-word;
+      max-width: 180px;
+      flex: 1;
+    }
+
+    .node-url-edit.empty {
+      opacity: 0.25;
+    }
+
+    .node-url-edit.empty:before {
+      content: 'url...';
+      opacity: 0.5;
+    }
+
+    .node-url-edit:focus {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 2px 4px;
+      margin: -2px -4px;
+      border-radius: 2px;
+      opacity: 1;
+    }
+
+    .node-url-link {
+      font-size: 12px;
+      color: var(--fg);
+      text-decoration: none;
+      opacity: 0.7;
+      transition: opacity 0.1s;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+
+    .node-url-link:hover {
+      opacity: 1;
+    }
+
+    #hud {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      background: var(--hud-bg);
+      color: var(--hud-fg);
+      padding: 8px 12px;
+      font-size: 10px;
+      border: 2px solid var(--fg);
+      line-height: 1.6;
+      font-family: 'Courier New', monospace;
+      box-shadow: 3px 3px 0 rgba(0,0,0,0.2);
+      z-index: 1000;
+    }
+
+    #hud-line {
+      white-space: pre;
+    }
+
+    #controls {
+      position: fixed;
+      bottom: 12px;
+      left: 12px;
+      background: var(--hud-bg);
+      color: var(--hud-fg);
+      padding: 8px 12px;
+      font-size: 9px;
+      border: 2px solid var(--fg);
+      box-shadow: 3px 3px 0 rgba(0,0,0,0.2);
+      z-index: 1000;
+    }
+
+    .control-line {
+      margin-bottom: 3px;
+    }
+
+    .control-line:last-child {
+      margin-bottom: 0;
+    }
+
+    #theme-toggle {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      background: var(--hud-bg);
+      color: var(--hud-fg);
+      padding: 8px 12px;
+      font-size: 10px;
+      border: 2px solid var(--fg);
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      box-shadow: 3px 3px 0 rgba(0,0,0,0.2);
+      z-index: 1000;
+      transition: all 0.1s;
+    }
+
+    #theme-toggle:hover {
+      background: var(--fg);
+      color: var(--bg);
+    }
+
+    #save-btn, #load-btn, #fullscreen-btn {
+      position: fixed;
+      top: 12px;
+      background: var(--hud-bg);
+      color: var(--hud-fg);
+      padding: 8px 12px;
+      font-size: 10px;
+      border: 2px solid var(--fg);
+      cursor: pointer;
+      font-family: 'Courier New', monospace;
+      box-shadow: 3px 3px 0 rgba(0,0,0,0.2);
+      z-index: 1000;
+      transition: all 0.1s;
+    }
+
+    #save-btn {
+      right: 92px;
+    }
+
+    #load-btn {
+      right: 172px;
+    }
+
+    #fullscreen-btn {
+      right: 252px;
+    }
+
+    #save-btn:hover, #load-btn:hover, #fullscreen-btn:hover {
+      background: var(--fg);
+      color: var(--bg);
+    }
+
+    /* Fullscreen mode - hide UI */
+    body.fullscreen #hud,
+    body.fullscreen #controls,
+    body.fullscreen #theme-toggle,
+    body.fullscreen #save-btn,
+    body.fullscreen #load-btn,
+    body.fullscreen #fullscreen-btn {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div id="hud-line"></div>
+  </div>
+
+  <button id="theme-toggle">◐ THEME</button>
+  <button id="save-btn">💾 SAVE</button>
+  <button id="load-btn">📂 LOAD</button>
+  <button id="fullscreen-btn">⛶ FULL</button>
+  <input type="file" id="load-input" accept=".json" style="display: none;">
+
+  <div id="controls">
+    <div class="control-line">WHEEL: Zoom (at mouse)</div>
+    <div class="control-line">DRAG: Pan / Move node</div>
+    <div class="control-line">CTRL+DRAG: Connect nodes</div>
+    <div class="control-line">TAB: New node → pan → focus</div>
+    <div class="control-line">TAB in fields: label→text→url</div>
+    <div class="control-line">CLICK: Edit label/text/url</div>
+    <div class="control-line">ENTER/ESC: Save/Cancel edit</div>
+    <div class="control-line">DEL: Delete node+children/edge</div>
+    <div class="control-line">FULL: Distraction-free (ESC)</div>
+  </div>
+
+  <div id="container">
+    <svg id="svg"></svg>
+    <div id="viewport"></div>
+  </div>
+
+  <script>
+    /* ────────────────────────────────────────────────────────────────
+     * SIGNAL IMPLEMENTATION
+     * ──────────────────────────────────────────────────────────────── */
+    class Signal {
+      constructor(initialValue) {
+        this._value = initialValue;
+        this.listeners = new Set();
+      }
+
+      get value() { return this._value; }
+
+      set value(next) {
+        this._value = next;
+        this.listeners.forEach(fn => fn(next));
+      }
+
+      subscribe(fn) {
+        this.listeners.add(fn);
+        fn(this._value);
+        return () => this.listeners.delete(fn);
+      }
+    }
+
+    /* ────────────────────────────────────────────────────────────────
+     * STATE
+     * ──────────────────────────────────────────────────────────────── */
+    const state = {
+      viewport: new Signal({ x: 400, y: 300, zoom: 1 }),
+      nodes: new Signal([
+        { id: 'root', label: 'SYSTEM', text: 'Core system architecture', url: 'https://example.com/system', x: 0, y: 0, parent: null },
+        { id: 'n1', label: 'INPUT', text: 'User input processing layer', url: 'https://example.com/input', x: 200, y: -100, parent: 'root' },
+        { id: 'n2', label: 'PROCESS', text: 'Data processing pipeline', url: '', x: -200, y: -100, parent: 'root' },
+        { id: 'n3', label: 'OUTPUT', text: 'Display and network output', url: '', x: 0, y: 150, parent: 'root' },
+        { id: 'n4', label: 'SENSORS', text: '', url: '', x: 350, y: -200, parent: 'n1' },
+        { id: 'n5', label: 'FILTERS', text: '', url: '', x: 380, y: -50, parent: 'n1' },
+        { id: 'n6', label: 'COMPUTE', text: '', url: '', x: -350, y: -200, parent: 'n2' },
+        { id: 'n7', label: 'MEMORY', text: '', url: '', x: -380, y: -50, parent: 'n2' },
+        { id: 'n8', label: 'DISPLAY', text: '', url: '', x: -150, y: 280, parent: 'n3' },
+        { id: 'n9', label: 'NETWORK', text: '', url: '', x: 150, y: 280, parent: 'n3' }
+      ]),
+      selectedNode: new Signal(null),
+      selectedEdge: new Signal(null),
+      dragging: new Signal(null),
+      connecting: new Signal(null), // { fromNodeId, toX, toY } when CTRL+dragging
+      theme: new Signal('light'),
+      fullscreen: new Signal(false)
+    };
+
+    let nodeCounter = 10;
+
+    /* ────────────────────────────────────────────────────────────────
+     * UTILITIES
+     * ──────────────────────────────────────────────────────────────── */
+    function getEdges(nodes) {
+      return nodes
+        .filter(n => n.parent)
+        .map(n => ({
+          from: n.parent,
+          to: n.id,
+          fromNode: nodes.find(node => node.id === n.parent),
+          toNode: n
+        }))
+        .filter(e => e.fromNode && e.toNode);
+    }
+
+    function screenToWorld(screenX, screenY, viewport) {
+      return {
+        x: (screenX - viewport.x) / viewport.zoom,
+        y: (screenY - viewport.y) / viewport.zoom
+      };
+    }
+
+    function worldToScreen(worldX, worldY, viewport) {
+      return {
+        x: worldX * viewport.zoom + viewport.x,
+        y: worldY * viewport.zoom + viewport.y
+      };
+    }
+
+    function edgeId(from, to) {
+      return `${from}-${to}`;
+    }
+
+    /* ────────────────────────────────────────────────────────────────
+     * RENDER
+     * ──────────────────────────────────────────────────────────────── */
+    const viewport = document.getElementById('viewport');
+    const svg = document.getElementById('svg');
+    const hud = document.getElementById('hud-line');
+
+    function renderNodes(nodes) {
+      viewport.innerHTML = '';
+      nodes.forEach(node => {
+        const el = document.createElement('div');
+        el.className = 'node';
+        if (node.id === state.selectedNode.value) el.classList.add('selected');
+        if (node.id === 'root') el.classList.add('root');
+        el.style.left = node.x + 'px';
+        el.style.top = node.y + 'px';
+        el.dataset.id = node.id;
+
+        // Make label editable
+        const labelDiv = document.createElement('div');
+        labelDiv.className = 'node-label-edit';
+        labelDiv.contentEditable = 'true';
+        labelDiv.textContent = node.label;
+        labelDiv.spellcheck = false;
+        labelDiv.dataset.field = 'label';
+
+        // Text field (smaller)
+        const textDiv = document.createElement('div');
+        textDiv.className = 'node-text-edit';
+        textDiv.contentEditable = 'true';
+        textDiv.textContent = node.text || '';
+        textDiv.spellcheck = false;
+        textDiv.dataset.field = 'text';
+        if (!node.text) textDiv.classList.add('empty');
+
+        // URL field with link
+        const urlContainer = document.createElement('div');
+        urlContainer.className = 'node-url-container';
+
+        const urlDiv = document.createElement('div');
+        urlDiv.className = 'node-url-edit';
+        urlDiv.contentEditable = 'true';
+        urlDiv.textContent = node.url || '';
+        urlDiv.spellcheck = false;
+        urlDiv.dataset.field = 'url';
+        if (!node.url) urlDiv.classList.add('empty');
+
+        const urlLink = document.createElement('a');
+        urlLink.href = node.url || '#';
+        urlLink.className = 'node-url-link';
+        urlLink.innerHTML = '&raquo;';
+        urlLink.target = '_blank';
+        urlLink.style.display = node.url ? 'inline' : 'none';
+
+        // Prevent link clicks from triggering node selection
+        urlLink.addEventListener('click', (e) => {
+          if (node.url) {
+            e.stopPropagation();
+          } else {
+            e.preventDefault();
+          }
+        });
+
+        urlContainer.appendChild(urlDiv);
+        urlContainer.appendChild(urlLink);
+
+        // ID display
+        const idDiv = document.createElement('div');
+        idDiv.className = 'node-id';
+        idDiv.textContent = `#${node.id}`;
+
+        // Prevent drag when clicking editable fields
+        [labelDiv, textDiv, urlDiv].forEach(editableDiv => {
+          editableDiv.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+          });
+
+          // Handle Tab key for field navigation
+          editableDiv.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              const field = editableDiv.dataset.field;
+              if (field === 'label') {
+                textDiv.focus();
+              } else if (field === 'text') {
+                urlDiv.focus();
+              }
+              // If in url field, Tab does nothing (cycles out)
+            }
+
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              editableDiv.blur();
+            }
+
+            if (e.key === 'Escape') {
+              const field = editableDiv.dataset.field;
+              editableDiv.textContent = node[field] || '';
+              editableDiv.blur();
+            }
+          });
+
+          // Update node on blur
+          editableDiv.addEventListener('blur', () => {
+            const field = editableDiv.dataset.field;
+            const newValue = editableDiv.textContent.trim();
+
+            if (newValue !== node[field]) {
+              const nodes = [...state.nodes.value];
+              const nodeToUpdate = nodes.find(n => n.id === node.id);
+              if (nodeToUpdate) {
+                nodeToUpdate[field] = newValue;
+                state.nodes.value = nodes;
+                console.log(`Updated ${node.id}.${field}: "${newValue}"`);
+              }
+            }
+
+            // Update empty class
+            if (field === 'text' || field === 'url') {
+              if (!newValue) {
+                editableDiv.classList.add('empty');
+              } else {
+                editableDiv.classList.remove('empty');
+              }
+
+              // Show/hide URL link
+              if (field === 'url') {
+                urlLink.href = newValue || '#';
+                urlLink.style.display = newValue ? 'inline' : 'none';
+              }
+            }
+          });
+        });
+
+        el.appendChild(labelDiv);
+        el.appendChild(textDiv);
+        el.appendChild(urlContainer);
+        el.appendChild(idDiv);
+        viewport.appendChild(el);
+      });
+    }
+
+    function renderEdges(nodes, vp) {
+      const edges = getEdges(nodes);
+      svg.innerHTML = '';
+
+      edges.forEach(edge => {
+        const from = worldToScreen(edge.fromNode.x, edge.fromNode.y, vp);
+        const to = worldToScreen(edge.toNode.x, edge.toNode.y, vp);
+
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', from.x);
+        line.setAttribute('y1', from.y);
+        line.setAttribute('x2', to.x);
+        line.setAttribute('y2', to.y);
+        line.setAttribute('class', 'connection');
+
+        const currentEdgeId = edgeId(edge.from, edge.to);
+        line.dataset.edgeId = currentEdgeId;
+
+        // Check if this edge is selected
+        if (state.selectedEdge.value === currentEdgeId) {
+          line.classList.add('selected');
+        }
+
+        svg.appendChild(line);
+      });
+
+      // Render temporary connection line if connecting
+      if (state.connecting.value) {
+        const conn = state.connecting.value;
+        const fromNode = nodes.find(n => n.id === conn.fromNodeId);
+        if (fromNode) {
+          const from = worldToScreen(fromNode.x, fromNode.y, vp);
+
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', from.x);
+          line.setAttribute('y1', from.y);
+          line.setAttribute('x2', conn.toX);
+          line.setAttribute('y2', conn.toY);
+          line.setAttribute('class', 'connection temp-connection');
+          svg.appendChild(line);
+        }
+      }
+
+      // Self-check
+      const expectedEdges = nodes.filter(n => n.parent).length;
+      const actualEdges = edges.length;
+      if (expectedEdges !== actualEdges) {
+        console.warn(`Edge sync check: expected ${expectedEdges}, got ${actualEdges}`);
+      }
+    }
+
+    function renderViewport(vp) {
+      viewport.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
+    }
+
+    function renderHUD(vp, nodes) {
+      const mode = state.theme.value === 'dark' ? 'DARK' : 'LIGHT';
+      const selected = state.selectedNode.value ? `NODE:${state.selectedNode.value}` :
+                       state.selectedEdge.value ? `EDGE:${state.selectedEdge.value}` : 'NONE';
+      hud.textContent =
+        `MODE: ${mode}\n` +
+        `ZOOM: ${vp.zoom.toFixed(2)}x\n` +
+        `PAN:  [${Math.round(vp.x)}, ${Math.round(vp.y)}]\n` +
+        `SELECTED: ${selected}\n` +
+        `NODES: ${nodes.length} | EDGES: ${getEdges(nodes).length}`;
+    }
+
+    /* ────────────────────────────────────────────────────────────────
+     * SUBSCRIPTIONS
+     * ──────────────────────────────────────────────────────────────── */
+    state.nodes.subscribe(nodes => {
+      renderNodes(nodes);
+      renderEdges(nodes, state.viewport.value);
+      renderHUD(state.viewport.value, nodes);
+    });
+
+    state.viewport.subscribe(vp => {
+      renderViewport(vp);
+      renderEdges(state.nodes.value, vp);
+      renderHUD(vp, state.nodes.value);
+    });
+
+    state.selectedNode.subscribe((nodeId) => {
+      renderNodes(state.nodes.value);
+      // Only clear edge selection if we're selecting a node (not deselecting)
+      if (nodeId !== null) {
+        state.selectedEdge.value = null;
+      }
+      renderHUD(state.viewport.value, state.nodes.value);
+    });
+
+    state.selectedEdge.subscribe(() => {
+      renderEdges(state.nodes.value, state.viewport.value);
+      renderHUD(state.viewport.value, state.nodes.value);
+    });
+
+    state.connecting.subscribe(() => {
+      renderEdges(state.nodes.value, state.viewport.value);
+    });
+
+    state.fullscreen.subscribe((isFullscreen) => {
+      if (isFullscreen) {
+        document.body.classList.add('fullscreen');
+      } else {
+        document.body.classList.remove('fullscreen');
+      }
+    });
+
+    state.theme.subscribe(theme => {
+      document.body.className = theme;
+      renderEdges(state.nodes.value, state.viewport.value);
+      renderHUD(state.viewport.value, state.nodes.value);
+    });
+
+    /* ────────────────────────────────────────────────────────────────
+     * INTERACTIONS
+     * ──────────────────────────────────────────────────────────────── */
+    const container = document.getElementById('container');
+    let isPanning = false;
+    let panStart = { x: 0, y: 0 };
+    let mousePos = { x: 0, y: 0 };
+    let dragOffset = { x: 0, y: 0 }; // Offset from node center to mouse on drag start
+    let isCtrlPressed = false; // Track CTRL key state
+
+    // Track mouse position
+    window.addEventListener('mousemove', (e) => {
+      mousePos = { x: e.clientX, y: e.clientY };
+
+      if (isPanning) {
+        state.viewport.value = {
+          ...state.viewport.value,
+          x: e.clientX - panStart.x,
+          y: e.clientY - panStart.y
+        };
+      }
+
+      // Connection mode - draw temporary line
+      if (state.connecting.value) {
+        state.connecting.value = {
+          ...state.connecting.value,
+          toX: e.clientX,
+          toY: e.clientY
+        };
+      }
+      // Node dragging (only if NOT in connection mode)
+      else if (state.dragging.value) {
+        const worldPos = screenToWorld(e.clientX, e.clientY, state.viewport.value);
+        const nodes = [...state.nodes.value];
+        const node = nodes.find(n => n.id === state.dragging.value);
+        if (node) {
+          // Apply the offset to maintain the grab point
+          node.x = worldPos.x - dragOffset.x;
+          node.y = worldPos.y - dragOffset.y;
+          state.nodes.value = nodes;
+        }
+      }
+    });
+
+    // Track CTRL key
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Control') {
+        isCtrlPressed = true;
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'Control') {
+        isCtrlPressed = false;
+      }
+    });
+
+    // Zoom at mouse position
+    container.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = e.deltaY * -0.0005;
+      const vp = state.viewport.value;
+      const newZoom = Math.max(0.3, Math.min(2.5, vp.zoom + delta));
+
+      const zoomRatio = newZoom / vp.zoom;
+
+      // Mouse position relative to viewport
+      const mouseX = mousePos.x;
+      const mouseY = mousePos.y;
+
+      // New pan position to keep point under mouse stationary
+      const newX = mouseX - (mouseX - vp.x) * zoomRatio;
+      const newY = mouseY - (mouseY - vp.y) * zoomRatio;
+
+      state.viewport.value = {
+        x: newX,
+        y: newY,
+        zoom: newZoom
+      };
+    });
+
+    // Pan
+    container.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.node') || e.target.classList.contains('connection')) return;
+      isPanning = true;
+      container.classList.add('grabbing');
+      panStart = {
+        x: e.clientX - state.viewport.value.x,
+        y: e.clientY - state.viewport.value.y
+      };
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      // Handle connection mode
+      if (state.connecting.value) {
+        const fromNodeId = state.connecting.value.fromNodeId;
+
+        // Find if we're over a node
+        const targetEl = document.elementFromPoint(e.clientX, e.clientY);
+        const targetNode = targetEl?.closest('.node');
+
+        if (targetNode) {
+          const toNodeId = targetNode.dataset.id;
+
+          // Can't connect to self
+          if (fromNodeId !== toNodeId) {
+            const nodes = [...state.nodes.value];
+            const fromNode = nodes.find(n => n.id === fromNodeId);
+            const toNode = nodes.find(n => n.id === toNodeId);
+
+            // Check if already connected (in either direction)
+            const alreadyConnected =
+              toNode.parent === fromNodeId ||
+              fromNode.parent === toNodeId;
+
+            if (!alreadyConnected) {
+              // Create connection: toNode becomes child of fromNode
+              toNode.parent = fromNodeId;
+              state.nodes.value = nodes;
+              console.log(`Connected: ${fromNodeId} -> ${toNodeId}`);
+            } else {
+              console.log(`Already connected: ${fromNodeId} <-> ${toNodeId}`);
+            }
+          }
+        }
+
+        // Clear connection mode
+        state.connecting.value = null;
+      }
+
+      isPanning = false;
+      container.classList.remove('grabbing');
+      state.dragging.value = null;
+      dragOffset = { x: 0, y: 0 }; // Reset offset
+    });
+
+    // Node selection and dragging/connecting
+    viewport.addEventListener('mousedown', (e) => {
+      // Don't interfere with any contenteditable field or links
+      if (e.target.contentEditable === 'true' || e.target.classList.contains('node-url-link')) {
+        return;
+      }
+
+      const nodeEl = e.target.closest('.node');
+      if (!nodeEl) return;
+      e.stopPropagation();
+
+      const id = nodeEl.dataset.id;
+      state.selectedNode.value = id;
+
+      // If CTRL is pressed, enter connection mode
+      if (isCtrlPressed) {
+        state.connecting.value = {
+          fromNodeId: id,
+          toX: e.clientX,
+          toY: e.clientY
+        };
+        console.log(`Connection mode: started from ${id}`);
+      }
+      // Otherwise, enter drag mode
+      else {
+        state.dragging.value = id;
+
+        // Calculate offset between mouse and node center to prevent jump
+        const nodes = state.nodes.value;
+        const node = nodes.find(n => n.id === id);
+        if (node) {
+          const mouseWorld = screenToWorld(e.clientX, e.clientY, state.viewport.value);
+          dragOffset.x = mouseWorld.x - node.x;
+          dragOffset.y = mouseWorld.y - node.y;
+        }
+      }
+    });
+
+    // Edge selection - needs mousedown to capture before pan starts
+    svg.addEventListener('mousedown', (e) => {
+      if (e.target.classList.contains('connection')) {
+        e.stopPropagation();
+        const id = e.target.dataset.edgeId;
+        state.selectedEdge.value = id;
+        state.selectedNode.value = null;
+        console.log(`Edge selected: ${id}`);
+      }
+    });
+
+    // Deselect on background click
+    container.addEventListener('click', (e) => {
+      if (e.target === container || e.target === svg) {
+        state.selectedNode.value = null;
+        state.selectedEdge.value = null;
+      }
+    });
+
+    // Theme toggle
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      state.theme.value = state.theme.value === 'light' ? 'dark' : 'light';
+    });
+
+    // Save button
+    document.getElementById('save-btn').addEventListener('click', () => {
+      const nodes = state.nodes.value;
+      const rootNode = nodes.find(n => n.id === 'root');
+      const filename = rootNode
+        ? rootNode.label.toLowerCase().replace(/\s+/g, '-') + '.json'
+        : 'mindmap.json';
+
+      const data = {
+        nodes: nodes,
+        viewport: state.viewport.value,
+        theme: state.theme.value,
+        version: '3.2'
+      };
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      console.log(`Saved to ${filename}`);
+    });
+
+    // Load button
+    document.getElementById('load-btn').addEventListener('click', () => {
+      document.getElementById('load-input').click();
+    });
+
+    document.getElementById('load-input').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const data = JSON.parse(event.target.result);
+
+          // Ensure all nodes have text and url fields
+          if (data.nodes) {
+            data.nodes = data.nodes.map(node => ({
+              ...node,
+              text: node.text || '',
+              url: node.url || ''
+            }));
+            state.nodes.value = data.nodes;
+          }
+
+          if (data.viewport) {
+            state.viewport.value = data.viewport;
+          }
+
+          if (data.theme) {
+            state.theme.value = data.theme;
+          }
+
+          console.log(`Loaded ${file.name}`);
+        } catch (err) {
+          console.error('Failed to load file:', err);
+          alert('Failed to load file. Please check the JSON format.');
+        }
+      };
+      reader.readAsText(file);
+
+      // Reset input
+      e.target.value = '';
+    });
+
+    // Fullscreen toggle
+    document.getElementById('fullscreen-btn').addEventListener('click', () => {
+      state.fullscreen.value = !state.fullscreen.value;
+    });
+
+    // Keyboard shortcuts
+    window.addEventListener('keydown', (e) => {
+      // ESC: Exit fullscreen
+      if (e.key === 'Escape' && state.fullscreen.value) {
+        state.fullscreen.value = false;
+        return;
+      }
+
+      // TAB: Create new node with smart positioning (only if not in contenteditable)
+      if (e.key === 'Tab') {
+        // Check if we're in a contenteditable
+        const activeEl = document.activeElement;
+        if (activeEl && activeEl.contentEditable === 'true') {
+          // Let the field's own Tab handler deal with it
+          return;
+        }
+
+        e.preventDefault();
+        const nodes = [...state.nodes.value];
+        const selectedNode = state.selectedNode.value
+          ? nodes.find(n => n.id === state.selectedNode.value)
+          : nodes.find(n => n.id === 'root');
+
+        const parentNode = selectedNode || nodes[0];
+
+        // Find siblings (children of the same parent)
+        const siblings = nodes.filter(n => n.parent === parentNode.id);
+
+        // Calculate insertion position in front of parent
+        const baseDistance = 150;
+        const spreadAngle = Math.PI / 3; // 60 degrees
+        const startAngle = -spreadAngle / 2;
+        const angleStep = siblings.length > 0 ? spreadAngle / (siblings.length + 1) : 0;
+        const newAngle = startAngle + angleStep * (siblings.length + 1);
+
+        const newNode = {
+          id: 'n' + nodeCounter++,
+          label: 'NODE_' + (nodeCounter - 1),
+          text: '',
+          url: '',
+          x: parentNode.x + Math.cos(newAngle) * baseDistance,
+          y: parentNode.y + Math.sin(newAngle) * baseDistance,
+          parent: parentNode.id
+        };
+
+        // Gently push existing siblings to make room
+        if (siblings.length > 0) {
+          const pushFactor = 0.3;
+          siblings.forEach((sibling, idx) => {
+            const siblingAngle = Math.atan2(
+              sibling.y - parentNode.y,
+              sibling.x - parentNode.x
+            );
+
+            // Spread siblings more evenly
+            const targetAngle = startAngle + angleStep * (idx + 1);
+            const angleDiff = targetAngle - siblingAngle;
+
+            sibling.x += Math.cos(siblingAngle + angleDiff * pushFactor) * 40;
+            sibling.y += Math.sin(siblingAngle + angleDiff * pushFactor) * 40;
+          });
+        }
+
+        nodes.push(newNode);
+        state.nodes.value = nodes;
+        state.selectedNode.value = newNode.id;
+
+        // Pan to the new node
+        const screenPos = worldToScreen(newNode.x, newNode.y, state.viewport.value);
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+
+        state.viewport.value = {
+          ...state.viewport.value,
+          x: state.viewport.value.x + (centerX - screenPos.x),
+          y: state.viewport.value.y + (centerY - screenPos.y)
+        };
+
+        // Focus the label field after render
+        setTimeout(() => {
+          const newNodeEl = document.querySelector(`.node[data-id="${newNode.id}"] .node-label-edit`);
+          if (newNodeEl) {
+            newNodeEl.focus();
+            // Select all text
+            const range = document.createRange();
+            range.selectNodeContents(newNodeEl);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+        }, 150);
+      }
+
+      // DEL: Delete selected edge or node
+      if (e.key === 'Delete') {
+        // If edge is selected, delete the edge
+        if (state.selectedEdge.value) {
+          const [fromId, toId] = state.selectedEdge.value.split('-');
+          const nodes = [...state.nodes.value];
+          const nodeToOrphan = nodes.find(n => n.id === toId);
+
+          if (nodeToOrphan) {
+            // Remove parent connection
+            nodeToOrphan.parent = null;
+            state.nodes.value = nodes;
+            state.selectedEdge.value = null;
+            console.log(`Edge deleted: ${fromId} -> ${toId}`);
+          }
+        }
+        // If node is selected, delete node and all descendants
+        else if (state.selectedNode.value) {
+          const nodeId = state.selectedNode.value;
+
+          // Can't delete root
+          if (nodeId === 'root') {
+            console.log('Cannot delete root node');
+            return;
+          }
+
+          let nodes = [...state.nodes.value];
+
+          // Find all descendants recursively
+          function findDescendants(id) {
+            const children = nodes.filter(n => n.parent === id);
+            let descendants = [...children];
+            children.forEach(child => {
+              descendants = descendants.concat(findDescendants(child.id));
+            });
+            return descendants;
+          }
+
+          const toDelete = [nodeId, ...findDescendants(nodeId).map(n => n.id)];
+
+          // Filter out deleted nodes
+          nodes = nodes.filter(n => !toDelete.includes(n.id));
+
+          state.nodes.value = nodes;
+          state.selectedNode.value = null;
+          console.log(`Deleted node ${nodeId} and ${toDelete.length - 1} descendants`);
+        }
+      }
+    });
+
+    /* ────────────────────────────────────────────────────────────────
+     * INITIALIZATION
+     * ──────────────────────────────────────────────────────────────── */
+    // Center viewport
+    state.viewport.value = {
+      x: window.innerWidth / 2,
+      y: window.innerHeight / 2,
+      zoom: 1
+    };
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      renderEdges(state.nodes.value, state.viewport.value);
+    });
+
+    // Load theme preference
+    const savedTheme = localStorage.getItem('zui-theme') || 'light';
+    state.theme.value = savedTheme;
+
+    // Save theme on change
+    state.theme.subscribe(theme => {
+      localStorage.setItem('zui-theme', theme);
+    });
+
+    console.log('ZUI Mind Map LCD Edition v4.0 initialized');
+    console.log('✓ Edge sync self-check active');
+    console.log('✓ Theme toggle (Casio colors)');
+    console.log('✓ Mouse-relative zoom');
+    console.log('✓ Selectable edges with marching ants');
+    console.log('✓ DEL deletes nodes+descendants or edges');
+    console.log('✓ Smart node insertion with room-making');
+    console.log('✓ No-jump node dragging (offset preserved)');
+    console.log('✓ CTRL+drag to create connections between nodes');
+    console.log('✓ Editable label, text, and url fields with TAB navigation');
+    console.log('✓ TAB creates node, pans to it, and focuses label');
+    console.log('✓ Save/Load JSON (filename from root label)');
+    console.log('✓ Fullscreen mode (ESC to exit)');
+  </script>
+</body>
+</html>
